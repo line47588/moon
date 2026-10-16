@@ -1,0 +1,47 @@
+name: Build calendar (วันพระ + วันหยุด)
+
+# moon.json / holiday.json for the CYD calendar page, made by scripts/gen_calendar.py:
+# วันพระ computed (pythaidate), holidays from Google's Thai holiday calendar + the
+# computed Buddhist days. Weekly, so the next year and newly announced special days
+# arrive without anyone uploading files.
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "23 2 * * 1" # ทุกวันจันทร์ 09:23 น. ไทย
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gen-calendar
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: |
+          pip install pythaidate==0.2.0
+          python scripts/gen_calendar.py .
+
+      - name: Commit & push if changed
+        shell: bash
+        run: |
+          if [[ -n "$(git status --porcelain moon.json holiday.json)" ]]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add moon.json holiday.json
+            git commit -m "calendar: update $(date -u +'%Y-%m-%d')"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin HEAD:"${GITHUB_REF_NAME}"
+          else
+            echo "No changes."
+          fi
